@@ -9,7 +9,13 @@
         "${workspaceFolder}/**",
         "${workspaceFolder}/main/**",
         "${workspaceFolder}/main/lib/**",
-        "${workspaceFolder}/main/lib/main/"
+        "${workspaceFolder}/main/lib/main/",
+        "${workspaceFolder}/main/lib/rgbStrip/",
+        "${workspaceFolder}/components/**",
+        "${workspaceFolder}/components/DevLib/Common/libraries/Counter/**",
+        "${workspaceFolder}/components/DevLib/ESP-IDF/libraries/pinManager/**",
+        "${workspaceFolder}/components/DevLib/ESP-IDF/libraries/Utils/**",
+        "${workspaceFolder}/components/DevLib/ESP-IDF/libraries/pitchManager/**"
       ],
       "browse": {
         "path": [
@@ -17,6 +23,12 @@
           "${workspaceFolder}/main/**",
           "${workspaceFolder}/main/lib/**",
           "${workspaceFolder}/main/lib/main/**",
+          "${workspaceFolder}/main/lib/rgbStrip/**",
+          "${workspaceFolder}/components/**",
+          "${workspaceFolder}/components/DevLib/Common/libraries/Counter/**",
+          "${workspaceFolder}/components/DevLib/ESP-IDF/libraries/pinManager/**",
+          "${workspaceFolder}/components/DevLib/ESP-IDF/libraries/Utils/**",
+          "${workspaceFolder}/components/DevLib/ESP-IDF/libraries/pitchManager/**"
         ],
         "limitSymbolsToIncludedHeaders": true
       }

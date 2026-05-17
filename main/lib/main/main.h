@@ -1,3 +1,4 @@
+#pragma once
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
@@ -16,3 +17,8 @@
 #include "esp_mac.h"
 #include "esp_now.h"
 #include "esp_crc.h"
+#include "Utils.h"
+#include "Counter.h"
+#include "pinManager.h"
+#include "pitchManager.h"
+#include "rgbStrip.h"

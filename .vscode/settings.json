@@ -13,5 +13,7 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\eubry\\OneDrive\\Documents\\Programs\\Protoboard\\ESP32\\ESPIDF\\S3_Supermini\\esp32s3_espnow_monitController\\build"
-  ]
+  ],
+  "idf.flashType": "UART",
+  "idf.portWin": "COM3"
 }

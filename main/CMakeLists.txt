@@ -4,6 +4,12 @@ idf_component_register(SRCS "main/main.cpp"
                         esp_event 
                         esp_netif 
                         esp_wifi
+                        espressif__led_strip
+                        Utils
+                        Counter
+                        pinManager
+                        pitchManager
                     INCLUDE_DIRS "."
                     "lib/main"
+                    "lib/rgbStrip"
                     )
