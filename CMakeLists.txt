@@ -6,6 +6,7 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/components/DevLib/ESP-IDF/libraries/Utils"
     "${CMAKE_CURRENT_SOURCE_DIR}/components/DevLib/ESP-IDF/libraries/pinManager"
     "${CMAKE_CURRENT_SOURCE_DIR}/components/DevLib/ESP-IDF/libraries/pitchManager"
+    "${CMAKE_CURRENT_SOURCE_DIR}/components/DevLib/ESP-IDF/libraries/oledDisplay"
 )
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(esp32s3_espnow_monitController)

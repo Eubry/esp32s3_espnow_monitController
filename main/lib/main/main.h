@@ -22,3 +22,13 @@
 #include "pinManager.h"
 #include "pitchManager.h"
 #include "rgbStrip.h"
+#include "oledDisplay.h"
+
+struct motDta{
+    int16_t speed=0;
+    int8_t dir=0;
+};
+struct carDta{
+    motDta motL;
+    motDta motR;
+};

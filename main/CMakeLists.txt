@@ -9,6 +9,7 @@ idf_component_register(SRCS "main/main.cpp"
                         Counter
                         pinManager
                         pitchManager
+                        oledDisplay
                     INCLUDE_DIRS "."
                     "lib/main"
                     "lib/rgbStrip"
