@@ -4,6 +4,8 @@ RGBStrip bLed;
 Utils::taskManager taskMgr;
 pinManager pin;
 OLEDDisplay dsp;
+static bool s_displayReady = false;
+btnM btnAct;
 // ------------------------------------------------------
 // -----Function prototypes------------------------------
 static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
@@ -18,6 +20,9 @@ extern "C" void app_main(void){
     ESP_LOGI("APP_MAIN", "Starting app controller...");
     bLed.begin();// WS2812 onboard LED on many ESP32-S3 Supermini boards is on GPIO48.
     bLed.color(100, 0, 100);// Set initial color to purple to indicate startup
+    //-----Buton start/stop on pin 13-----------
+    pin.digitalPin("btnAction", 13, GPIO_MODE_INPUT, GPIO_PULLDOWN_ONLY);
+    btnAct.set(pin, "btnAction");
     //------------------------------------------
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
@@ -31,6 +36,11 @@ extern "C" void app_main(void){
 
     ESP_ERROR_CHECK(esp_now_init());
     ESP_ERROR_CHECK(esp_now_register_recv_cb(recv_cb));
+
+    s_displayReady = dsp.init();
+    if (!s_displayReady) {
+        ESP_LOGE("OLED", "OLED init failed. Check SDA/SCL pins and I2C address.");
+    }
 
     ESP_LOGI("Receiver", "Receptor listo. Esperando mensajes...");
     // -----Task for displyaying data on OLED and controlling RGB LED based on received data-----
@@ -49,14 +59,17 @@ static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, i
 }
 void dspTask(void* param){
     while(true){
+        btnAct.update();
         // Update OLED display with current car data
-        dsp.clear();
-        dsp.drawString(0, 0, "Car Data:");
-        dsp.drawString(0, 10, "L Speed: " + std::to_string(car.motL.speed));
-        dsp.drawString(0, 20, "L Dir: " + std::to_string(car.motL.dir));
-        dsp.drawString(0, 30, "R Speed: " + std::to_string(car.motR.speed));
-        dsp.drawString(0, 40, "R Dir: " + std::to_string(car.motR.dir));
-        dsp.update();
+        if (s_displayReady) {
+            dsp.clear();
+            dsp.drawString(0, 0, "Car Data:");
+            dsp.drawString(0, 10, "L Speed: " + std::to_string(car.motL.speed));
+            dsp.drawString(0, 20, "L Dir: " + std::to_string(car.motL.dir));
+            dsp.drawString(0, 30, "R Speed: " + std::to_string(car.motR.speed));
+            dsp.drawString(0, 40, "R Dir: " + std::to_string(car.motR.dir));
+            dsp.update();
+        }
 
         // Set RGB LED color based on motor speeds
         uint8_t red = (car.motL.speed > 0) ? 255 : 0;

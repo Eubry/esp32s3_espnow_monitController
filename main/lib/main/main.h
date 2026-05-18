@@ -32,3 +32,38 @@ struct carDta{
     motDta motL;
     motDta motR;
 };
+struct statBool{
+    bool curr=false;
+    bool prev=false;
+};
+struct btnStat{
+    statBool stat;
+    void update(bool newState){
+        if(newState && !stat.prev){
+            ESP_LOGI("BTN","Button pressed");
+            stat.curr=newState;
+            stat.prev=stat.curr;
+        }
+    }
+};
+class btnM{
+    public:
+        btnM()=default;
+        void set(pinManager& pin, const char* name){
+            this->pin = &pin;
+            this->name = name;
+        }
+    void update(){
+        bool state=pin->digitalRead(name);
+        if(state==true){
+            ESP_LOGI("BTN","Button state: %d", state);
+        }else{
+            ESP_LOGI("BTN","Button state: %d", state);
+        }
+        //btn.update(state);
+    }
+private:
+    pinManager* pin = nullptr;
+    btnStat btn;
+    const char* name = nullptr;
+};
