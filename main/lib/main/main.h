@@ -28,40 +28,44 @@ struct motDta{
     int16_t speed=0;
     int8_t dir=0;
 };
+struct sensorDta{
+    bool a=false;
+    bool b=false;
+    bool c=false;
+};
 struct carDta{
     motDta motL;
     motDta motR;
+    sensorDta sensor;
+};
+struct btnDta{
+    uint8_t state = 0;
 };
 struct statBool{
     bool curr=false;
     bool prev=false;
 };
 struct btnStat{
-    statBool stat;
-    void update(bool newState){
-        if(newState && !stat.prev){
-            ESP_LOGI("BTN","Button pressed");
-            stat.curr=newState;
-            stat.prev=stat.curr;
-        }
-    }
+    statBool press;
+    bool state=false;
 };
-class btnM{
+class btnMgr{
     public:
-        btnM()=default;
+        btnMgr(){btn.press.prev=true; btn.press.curr=false; btn.state=false;};
         void set(pinManager& pin, const char* name){
             this->pin = &pin;
             this->name = name;
         }
     void update(){
-        bool state=pin->digitalRead(name);
-        if(state==true){
-            ESP_LOGI("BTN","Button state: %d", state);
+        btn.press.curr = pin->digitalRead(name);
+        if(btn.press.curr==false&&btn.press.curr!=btn.press.prev){
+            btn.press.prev = btn.press.curr;
+            btn.state=!btn.state;
         }else{
-            ESP_LOGI("BTN","Button state: %d", state);
+            btn.press.prev = btn.press.curr;
         }
-        //btn.update(state);
     }
+    bool state(){return btn.state;}
 private:
     pinManager* pin = nullptr;
     btnStat btn;
