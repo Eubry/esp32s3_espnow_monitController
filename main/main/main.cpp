@@ -149,15 +149,20 @@ struct senSt{
     bool c=false;
 } stdSens;
 void dspTask(void* param){
+    bool currentBtnState = btnAct.toggledState();
+    bool holdResetLock = false;
     while(true){
         btnAct.update();
-        bool currentBtnState = btnAct.state();
-        if (s_peerKnown && (!s_buttonStateSynced || currentBtnState != s_lastBtnState)) {
-            send_button_state(currentBtnState);
-            s_buttonStateSynced = true;
-            s_lastBtnState = currentBtnState;
-        } else if (!s_peerKnown) {
-            s_lastBtnState = currentBtnState;
+        if (btnAct.toggledChanged()) {
+            bool nextBtnState = btnAct.toggledState();
+            // If reset happened during OFF hold, ignore the next release toggle back to ON.
+            if (holdResetLock && nextBtnState) {
+                btnAct.setToggledState(false);
+                currentBtnState = false;
+                holdResetLock = false;
+            } else {
+                currentBtnState = nextBtnState;
+            }
         }
         // Update OLED display with current car data
         if (s_displayReady) {
@@ -180,42 +185,72 @@ void dspTask(void* param){
                 move="STOPPED";
             }
             dsp.drawString(0, 2, isConnected ? "ONLINE" : "OFFLINE");
-            dsp.drawString(20+cposX+csepX, 2, std::string(btnAct.state()? "ON" : "OFF"));
+            dsp.drawString(20+cposX+csepX, 2, std::string(currentBtnState ? "ON" : "OFF"));
             dsp.drawSensorCircle(6+cposX-csepX, 5, 5, stdSens.a);
             dsp.drawSensorCircle(6+cposX, 5, 5, stdSens.b);
             dsp.drawSensorCircle(6+cposX+csepX, 5, 5, stdSens.c);
             int yPos=14;
             dsp.drawLine(34,yPos,102,yPos,true);// Separator line below sensor indicators
-            dsp.drawLine(34,yPos,34,49,true);// Separator vertical middle line below sensor indicators
+            dsp.drawLine(34,yPos,34,64,true);// Separator vertical middle line below sensor indicators (1)
             dsp.drawLine(0,yPos+10,102,yPos+10,true);// Separator line below sensor indicators
-            dsp.drawLine(68,yPos,68,50,true);// Separator vertical middle line below sensor indicators
-            dsp.drawLine(102,yPos,102,50,true);// Separator vertical middle line below sensor indicators
-            dsp.drawLine(0,50,102,50,true);// Separator line below sensor indicators
+            dsp.drawLine(68,yPos,68,38,true);// Separator vertical middle line below sensor indicators (2)
+            dsp.drawLine(102,yPos,102,64,true);// Separator vertical middle line below sensor indicators (3)
+            dsp.drawLine(0,38,102,38,true);// Separator line below speed indicators
+            dsp.drawLine(0,52,102,52,true);// Separator line below state indicators
             // dsp.drawLine(0,70,102,70,true);// Separator line below sensor indicators
             dsp.drawString(38, 16, "LEFT");
             dsp.drawString(72, 16, "RIGHT");
             dsp.drawString(0, 28, "Speed");
-            dsp.drawString(0, 40,"Dir");
-            dsp.drawString(2, 56,move);
+            dsp.drawString(0, 42,"Dir");
+            dsp.drawString(0, 56,"Time");
+            dsp.drawString(38, 42,move);
             dsp.drawString(38, 28, std::to_string(speedL));
             dsp.drawString(72, 28, std::to_string(speedR));
-            dsp.drawString(38, 40, std::to_string(car.motL.dir));
-            dsp.drawString(72, 40, std::to_string(car.motR.dir));
-            // Cronometer that starts when the button is ON and pauses when the button is OFF. Displaying elapsed time in seconds on the bottom right of the OLED.
-            // When the button is pressed for more than 3 seconds the time resets to 0. (This can be used to measure lap times or time spent in a certain state)
+            //dsp.drawString(38, 42, std::to_string(car.motL.dir));
+            //dsp.drawString(72, 42, std::to_string(car.motR.dir));
+            // Stopwatch: runs while button is ON, pauses while OFF.
+            // If OFF is held for >3s, reset elapsed time to 0 once per hold.
             static TickType_t startTick = 0;
             static TickType_t pausedTicks = 0;
-            if(btnAct.state() && startTick == 0){
-                startTick = xTaskGetTickCount() - pausedTicks;
+            static TickType_t btnOffTick = 0;
+            static bool longPressResetDone = false;
+            const TickType_t nowTick = xTaskGetTickCount();
+
+            if(currentBtnState && startTick == 0){
+                startTick = nowTick - pausedTicks;
                 pausedTicks = 0;
-            }else if(!btnAct.state() && startTick != 0){
-                pausedTicks = xTaskGetTickCount() - startTick;
+            }else if(!currentBtnState && startTick != 0){
+                pausedTicks = nowTick - startTick;
                 startTick = 0;
             }
-            TickType_t elapsedTicks = btnAct.state() ? (xTaskGetTickCount() - startTick) : pausedTicks;
+
+            if (!currentBtnState) {
+                if (btnOffTick == 0) {
+                    btnOffTick = nowTick;
+                    longPressResetDone = false;
+                } else if (!longPressResetDone && (nowTick - btnOffTick) >= pdMS_TO_TICKS(3000)) {
+                    startTick = 0;
+                    pausedTicks = 0;
+                    longPressResetDone = true;
+                    holdResetLock = true;
+                    btnAct.setToggledState(false);
+                    currentBtnState = false;
+                }
+            } else {
+                btnOffTick = 0;
+                longPressResetDone = false;
+            }
+
+            TickType_t elapsedTicks = currentBtnState ? (nowTick - startTick) : pausedTicks;
             uint32_t elapsedSeconds = pdTICKS_TO_MS(elapsedTicks) / 1000;
+            // Show elapsed time in format 00:00:000, minutes:seconds:centiseconds
+            int min=elapsedSeconds / 60;
+            int sec=elapsedSeconds % 60;
+            int centis=(pdTICKS_TO_MS(elapsedTicks) % 1000) / 10;
             
-            dsp.drawString(50, 56, "Time: " + std::to_string(elapsedSeconds) + "s");
+            dsp.drawString(38, 56, std::to_string(min));
+            dsp.drawString(52, 56, ":" + std::to_string(sec));
+            dsp.drawString(70, 56, ":" + std::to_string(centis));
             
             // Finally, refresh the display to show the new data
             dsp.update();
