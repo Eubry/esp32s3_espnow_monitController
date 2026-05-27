@@ -10,8 +10,9 @@ static uint8_t s_peerMac[ESP_NOW_ETH_ALEN] = {0};
 static bool s_peerKnown = false;
 static bool s_lastBtnState = false;
 static bool s_buttonStateSynced = false;
-// static const uint8_t kSensorSrcMac[ESP_NOW_ETH_ALEN] = {0xD0, 0xCF, 0x13, 0x2F, 0x64, 0xCC};
+//static const uint8_t kSensorSrcMac[ESP_NOW_ETH_ALEN] = {0xD0, 0xCF, 0x13, 0x2F, 0x64, 0xCC};
 // Connect to mac: ac:27:6e:cc:25:b0
+//Tornado MAC
 static const uint8_t kSensorSrcMac[ESP_NOW_ETH_ALEN] = {0xAC, 0x27, 0x6E, 0xCC, 0x25, 0xB0};
 static TickType_t s_lastTargetRxTick = 0;
 static constexpr TickType_t kConnTimeoutTicks = pdMS_TO_TICKS(1500);
@@ -21,7 +22,7 @@ static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, i
 static bool send_button_state(uint8_t state);
 // ------------------------------------------------------
 // -----Data structures----------------------------------
-carDta car; // Global variable to hold the latest car data received via ESP-NOW (2 motors + 3 sensors)
+carDta car; // Global variable to hold the latest car data received via ESP-NOW (2 motors + 5 sensors)
 // ------------------------------------------------------
 // -----Tasks--------------------------------------------
 void dspTask(void* param);
@@ -57,7 +58,40 @@ extern "C" void app_main(void){
     taskMgr.add("DisplayTask",dspTask, NULL, 1, 0, 4096);
 }
 static void decode_car_payload(const uint8_t *data, int len, carDta &out) {
-    // 14-byte padded layout (sender struct uses compiler-aligned motDta + int16_t sensors):
+    auto read_le16 = [data](int idx) -> int16_t {
+        return static_cast<int16_t>(
+            static_cast<uint16_t>(data[idx]) |
+            (static_cast<uint16_t>(data[idx + 1]) << 8));
+    };
+
+    // Padded layout with 5 sensors (18-byte):
+    //   [0..1]  motL.speed (int16_t LE)
+    //   [2]     motL.dir   (int8_t)
+    //   [3]     padding
+    //   [4..5]  motR.speed (int16_t LE)
+    //   [6]     motR.dir   (int8_t)
+    //   [7]     padding
+    //   [8..9]  sensor.a   (int16_t LE)
+    //   [10..11]sensor.b   (int16_t LE)
+    //   [12..13]sensor.c   (int16_t LE)
+    //   [14..15]sensor.d   (int16_t LE)
+    //   [16..17]sensor.e   (int16_t LE)
+    if (len == 18) {
+        out.motL.speed = read_le16(0);
+        out.motL.dir   = static_cast<int8_t>(data[2]);
+        // data[3] = padding
+        out.motR.speed = read_le16(4);
+        out.motR.dir   = static_cast<int8_t>(data[6]);
+        // data[7] = padding
+        out.sensor.a = (read_le16(8)  != 0);
+        out.sensor.b = (read_le16(10) != 0);
+        out.sensor.c = (read_le16(12) != 0);
+        out.sensor.d = (read_le16(14) != 0);
+        out.sensor.e = (read_le16(16) != 0);
+        return;
+    }
+
+    // Legacy padded layout (14-byte, 3 sensors):
     //   [0..1]  motL.speed (int16_t LE)
     //   [2]     motL.dir   (int8_t)
     //   [3]     padding
@@ -68,28 +102,32 @@ static void decode_car_payload(const uint8_t *data, int len, carDta &out) {
     //   [10..11]sensor.b   (int16_t LE)
     //   [12..13]sensor.c   (int16_t LE)
     if (len == 14) {
-        out.motL.speed = static_cast<int16_t>(static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8));
+        out.motL.speed = read_le16(0);
         out.motL.dir   = static_cast<int8_t>(data[2]);
         // data[3] = padding
-        out.motR.speed = static_cast<int16_t>(static_cast<uint16_t>(data[4]) | (static_cast<uint16_t>(data[5]) << 8));
+        out.motR.speed = read_le16(4);
         out.motR.dir   = static_cast<int8_t>(data[6]);
         // data[7] = padding
-        out.sensor.a = (static_cast<int16_t>(static_cast<uint16_t>(data[8])  | (static_cast<uint16_t>(data[9])  << 8)) != 0);
-        out.sensor.b = (static_cast<int16_t>(static_cast<uint16_t>(data[10]) | (static_cast<uint16_t>(data[11]) << 8)) != 0);
-        out.sensor.c = (static_cast<int16_t>(static_cast<uint16_t>(data[12]) | (static_cast<uint16_t>(data[13]) << 8)) != 0);
+        out.sensor.a = (read_le16(8)  != 0);
+        out.sensor.b = (read_le16(10) != 0);
+        out.sensor.c = (read_le16(12) != 0);
+        out.sensor.d = false;
+        out.sensor.e = false;
         return;
     }
 
-    // Fallback packed layout (9-byte, no padding, bool sensors):
+    // Fallback packed layout (11-byte for 5 sensors, 9-byte legacy for 3 sensors):
     //   [0..1] motL.speed, [2] motL.dir, [3..4] motR.speed, [5] motR.dir
-    //   [6] sensor.a, [7] sensor.b, [8] sensor.c
-    out.motL.speed = static_cast<int16_t>(static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8));
+    //   [6] sensor.a, [7] sensor.b, [8] sensor.c, [9] sensor.d, [10] sensor.e
+    out.motL.speed = read_le16(0);
     out.motL.dir   = static_cast<int8_t>(data[2]);
-    out.motR.speed = static_cast<int16_t>(static_cast<uint16_t>(data[3]) | (static_cast<uint16_t>(data[4]) << 8));
+    out.motR.speed = read_le16(3);
     out.motR.dir   = static_cast<int8_t>(data[5]);
     out.sensor.a   = (len > 6 && data[6] != 0);
     out.sensor.b   = (len > 7 && data[7] != 0);
     out.sensor.c   = (len > 8 && data[8] != 0);
+    out.sensor.d   = (len > 9 && data[9] != 0);
+    out.sensor.e   = (len > 10 && data[10] != 0);
 }
 static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len) {
     if (memcmp(recv_info->src_addr, kSensorSrcMac, ESP_NOW_ETH_ALEN) != 0) {
@@ -106,9 +144,9 @@ static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, i
     s_buttonStateSynced = false;
     s_lastTargetRxTick = xTaskGetTickCount();
 
-    ESP_LOGI("Car data", "MAC: " MACSTR " -> Sensor A: %d, Sensor B: %d, Sensor C: %d, speedL: %d, dirL: %d, speedR: %d, dirR: %d",
+    ESP_LOGI("Car data", "MAC: " MACSTR " -> Sensor A: %d, Sensor B: %d, Sensor C: %d, Sensor D: %d, Sensor E: %d, speedL: %d, dirL: %d, speedR: %d, dirR: %d",
              MAC2STR(recv_info->src_addr),
-             car.sensor.a, car.sensor.b, car.sensor.c,
+             car.sensor.a, car.sensor.b, car.sensor.c, car.sensor.d, car.sensor.e,
              car.motL.speed, car.motL.dir, car.motR.speed, car.motR.dir);
 }
 static bool send_button_state(uint8_t state) {
@@ -141,12 +179,16 @@ static bool send_button_state(uint8_t state) {
 
     return true;
 }
-int8_t cposX=64;
-int8_t csepX=20;
+int8_t cposX=62;
+int8_t csepX=15;
+int8_t faceOffsetX=4;
+int8_t faceOffsetY=0;
 struct senSt{
     bool a=false;
     bool b=false;
     bool c=false;
+    bool d=false;
+    bool e=false;
 } stdSens;
 void dspTask(void* param){
     bool currentBtnState = btnAct.toggledState();
@@ -169,9 +211,11 @@ void dspTask(void* param){
             bool isConnected = s_peerKnown && ((xTaskGetTickCount() - s_lastTargetRxTick) <= kConnTimeoutTicks);
             dsp.clear();
             // Sensor indicators on first OLED line: empty when false, filled when true.
-            stdSens.a = !car.sensor.a;
-            stdSens.b = !car.sensor.b;
-            stdSens.c = !car.sensor.c;
+            stdSens.a = car.sensor.a;
+            stdSens.b = car.sensor.b;
+            stdSens.c = car.sensor.c;
+            stdSens.d = car.sensor.d;
+            stdSens.e = car.sensor.e;
             int16_t speedL = car.motL.speed;
             int16_t speedR = car.motR.speed;
             std::string move = "N/A";
@@ -184,11 +228,42 @@ void dspTask(void* param){
             }else if(speedL==0&&speedR==0){
                 move="STOPPED";
             }
-            dsp.drawString(0, 2, isConnected ? "ONLINE" : "OFFLINE");
-            dsp.drawString(20+cposX+csepX, 2, std::string(currentBtnState ? "ON" : "OFF"));
-            dsp.drawSensorCircle(6+cposX-csepX, 5, 5, stdSens.a);
-            dsp.drawSensorCircle(6+cposX, 5, 5, stdSens.b);
-            dsp.drawSensorCircle(6+cposX+csepX, 5, 5, stdSens.c);
+            // Status face position offset (configurable).
+            auto fx = [](int16_t x) { return x + faceOffsetX; };
+            auto fy = [](int16_t y) { return y + faceOffsetY; };
+
+            // Status icon frame (slightly larger).
+            dsp.drawSensorCircle(fx(10), fy(10), 10, false);
+            if (isConnected) {
+                // Happy face: eyes and smile.
+                dsp.drawPixel(fx(6), fy(8), true);
+                dsp.drawPixel(fx(7), fy(8), true);
+                dsp.drawPixel(fx(12), fy(8), true);
+                dsp.drawPixel(fx(13), fy(8), true);
+                dsp.drawLine(fx(8), fy(15), fx(12), fy(15), true);
+                dsp.drawPixel(fx(7), fy(14), true);
+                dsp.drawPixel(fx(13), fy(14), true);
+            } else {
+                // Sad face: X eyes and frown.
+                dsp.drawLine(fx(5), fy(8), fx(8), fy(11), true);
+                dsp.drawLine(fx(8), fy(8), fx(5), fy(11), true);
+                dsp.drawLine(fx(11), fy(8), fx(14), fy(11), true);
+                dsp.drawLine(fx(14), fy(8), fx(11), fy(11), true);
+                dsp.drawLine(fx(8), fy(16), fx(12), fy(16), true);
+                dsp.drawPixel(fx(7), fy(17), true);
+                dsp.drawPixel(fx(13), fy(17), true);
+                /*stdSens.a = false;
+                stdSens.b = false;
+                stdSens.c = false;
+                stdSens.d = false;
+                stdSens.e = false;*/
+            }
+            dsp.drawString(108, 2, std::string(currentBtnState ? "ON" : "OFF"));
+            dsp.drawSensorCircle(6+cposX-csepX*2, 5, 5, stdSens.a);
+            dsp.drawSensorCircle(6+cposX-csepX, 5, 5, stdSens.b);
+            dsp.drawSensorCircle(6+cposX, 5, 5, stdSens.c);
+            dsp.drawSensorCircle(6+cposX+csepX, 5, 5, stdSens.d);
+            dsp.drawSensorCircle(6+cposX+csepX*2, 5, 5, stdSens.e);
             int yPos=14;
             dsp.drawLine(34,yPos,102,yPos,true);// Separator line below sensor indicators
             dsp.drawLine(34,yPos,34,64,true);// Separator vertical middle line below sensor indicators (1)

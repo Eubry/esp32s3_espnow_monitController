@@ -32,6 +32,8 @@ struct sensorDta{
     bool a=false;
     bool b=false;
     bool c=false;
+    bool d=false;
+    bool e=false;
 };
 struct carDta{
     motDta motL;
